@@ -2,173 +2,215 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
 import os
+import uuid
 from datetime import datetime
+from views.seleccionar_equipos import SeleccionarEquipos
+from views.gestion_grupo_devolucion import GestionarGrupoDevolucion
 
 class PrestamoDashboard(tk.Toplevel):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.title("Sistema de Préstamos de Equipos")
-        self.geometry("1000x600")
+        self.title("Gestión de Préstamos de Equipos")
+        self.geometry("1200x800")
+        self.resizable(True, True)
 
+        # Configuración de rutas
+        self.configurar_rutas()
+
+        self.oficial_actual = None
+        self.crear_widgets()
+        self.verificar_archivos()
+
+    def configurar_rutas(self):
+        """Configura las rutas de los archivos de datos"""
         base_path = os.path.dirname(os.path.abspath(__file__))
         data_path = os.path.join(base_path, "..", "data")
 
         self.ruta_oficiales = os.path.abspath(os.path.join(data_path, "oficiales.xlsx"))
         self.ruta_equipos = os.path.abspath(os.path.join(data_path, "equipos.xlsx"))
-        self.ruta_historial = os.path.abspath(os.path.join(data_path, "historial.xlsx"))
+        self.ruta_historial = os.path.abspath(os.path.join(data_path, "historial_prestamos.xlsx"))
 
-        self.oficial_actual = None
-        self.historial = self.cargar_historial()
+    def verificar_archivos(self):
+        """Verifica que los archivos necesarios existan y tengan la estructura correcta"""
+        try:
+            if not os.path.exists(self.ruta_oficiales):
+                raise FileNotFoundError("Archivo de oficiales no encontrado")
 
-        self.crear_widgets()
+            if not os.path.exists(self.ruta_equipos):
+                raise FileNotFoundError("Archivo de equipos no encontrado")
+
+            if not os.path.exists(self.ruta_historial):
+                self.crear_historial_vacio()
+            else:
+                df = pd.read_excel(self.ruta_historial)
+                if 'ID_Grupo' not in df.columns:
+                    self.migrar_historial()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al verificar archivos:\n{str(e)}")
+            self.destroy()
+
+    def crear_historial_vacio(self):
+        """Crea un archivo de historial vacío con la estructura correcta"""
+        columns = [
+            'ID', 'Nombre', 'Cargo', 'ID_Equipo', 'Nombre_Equipo',
+            'Tipo_Equipo', 'Hora_Prestamo', 'Hora_Devolucion', 'Estado',
+            'Observaciones', 'ID_Grupo'
+        ]
+        pd.DataFrame(columns=columns).to_excel(self.ruta_historial, index=False)
+
+    def migrar_historial(self):
+        """Migra el historial antiguo añadiendo ID_Grupo"""
+        try:
+            df = pd.read_excel(self.ruta_historial)
+            if 'ID_Grupo' not in df.columns:
+                df['ID_Grupo'] = [str(uuid.uuid4()) for _ in range(len(df))]
+                df.to_excel(self.ruta_historial, index=False)
+                messagebox.showinfo("Información", "Historial migrado a nueva versión")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo migrar el historial:\n{str(e)}")
 
     def crear_widgets(self):
-        frame_oficial = ttk.LabelFrame(self, text="Buscar Oficial")
-        frame_oficial.pack(padx=10, pady=10, fill="x")
+        main_frame = ttk.Frame(self, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-        tk.Label(frame_oficial, text="ID de Oficial:").pack(side="left", padx=5)
-        self.entry_id_oficial = ttk.Entry(frame_oficial)
-        self.entry_id_oficial.pack(side="left", padx=5)
-        ttk.Button(frame_oficial, text="Buscar", command=self.buscar_oficial).pack(side="left", padx=5)
+        search_frame = ttk.LabelFrame(main_frame, text="Buscar Oficial", padding="10")
+        search_frame.pack(fill=tk.X, pady=5)
 
-        self.label_info_oficial = ttk.Label(frame_oficial, text="")
-        self.label_info_oficial.pack(side="left", padx=10)
+        ttk.Label(search_frame, text="ID o Nombre del Oficial:").grid(row=0, column=0, padx=5)
+        self.entry_busqueda = ttk.Entry(search_frame, width=30)
+        self.entry_busqueda.grid(row=0, column=1, padx=5)
 
-        frame_botones = ttk.Frame(self)
-        frame_botones.pack(pady=5)
-        ttk.Button(frame_botones, text="Ver Equipos Disponibles", command=self.ver_equipos_disponibles).pack(side="left", padx=5)
+        ttk.Button(search_frame, text="Buscar", command=self.buscar_oficial).grid(row=0, column=2, padx=5)
 
-        frame_tabla = ttk.LabelFrame(self, text="Historial del Oficial")
-        frame_tabla.pack(padx=10, pady=10, fill="both", expand=True)
+        self.info_frame = ttk.LabelFrame(main_frame, text="Información del Oficial", padding="10")
+        self.info_frame.pack(fill=tk.X, pady=5)
 
-        self.tree = ttk.Treeview(frame_tabla, columns=("ID", "Nombre", "Equipo", "Fecha Préstamo", "Fecha Devolución", "Estado"), show="headings")
-        for col in self.tree["columns"]:
-            self.tree.heading(col, text=col)
-        self.tree.pack(fill="both", expand=True)
-        self.tree.bind("<Double-1>", self.abrir_gestor_devolucion)
+        self.lbl_nombre = ttk.Label(self.info_frame, text="Nombre: ")
+        self.lbl_nombre.grid(row=0, column=0, sticky=tk.W, padx=5)
+
+        self.lbl_cargo = ttk.Label(self.info_frame, text="Cargo: ")
+        self.lbl_cargo.grid(row=0, column=1, sticky=tk.W, padx=5)
+
+        self.lbl_id = ttk.Label(self.info_frame, text="ID: ")
+        self.lbl_id.grid(row=0, column=2, sticky=tk.W, padx=5)
+
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X, pady=10)
+
+        ttk.Button(btn_frame, text="Nuevo Préstamo", command=self.abrir_ventana_equipos).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Actualizar", command=self.cargar_historial).pack(side=tk.LEFT, padx=5)
+
+        hist_frame = ttk.LabelFrame(main_frame, text="Historial de Préstamos Agrupados", padding="10")
+        hist_frame.pack(fill=tk.BOTH, expand=True)
+
+        columnas = ["ID", "Nombre", "Cargo", "Hora_Prestamo", "Total", "Devueltos", "Estado"]
+        self.tree_historial = ttk.Treeview(hist_frame, columns=columnas, show="headings", selectmode="browse")
+
+        for col in columnas:
+            self.tree_historial.heading(col, text=col)
+            self.tree_historial.column(col, width=150)
+
+        scrollbar = ttk.Scrollbar(hist_frame, orient=tk.VERTICAL, command=self.tree_historial.yview)
+        self.tree_historial.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree_historial.pack(fill=tk.BOTH, expand=True)
+
+        self.tree_historial.bind("<Double-1>", self.abrir_gestion_devolucion_grupal)
 
     def buscar_oficial(self):
-        id_buscar = self.entry_id_oficial.get()
+        termino = self.entry_busqueda.get().strip()
+        if not termino:
+            messagebox.showwarning("Advertencia", "Ingrese un ID o nombre para buscar")
+            return
+
         try:
             df = pd.read_excel(self.ruta_oficiales)
-            oficial = df[df['ID'].astype(str) == str(id_buscar)]
+            mask = (df['ID'].astype(str).str.contains(termino)) | (df['Nombre'].str.contains(termino, case=False))
+            resultados = df[mask]
 
-            if not oficial.empty:
-                nombre = oficial.iloc[0]['Nombre']
-                cargo = oficial.iloc[0]['CARGO']
-                self.oficial_actual = (id_buscar, nombre)
-                self.label_info_oficial.config(text=f"{cargo} {nombre} (ID: {id_buscar})", foreground="green")
-                self.mostrar_historial()
-            else:
-                self.oficial_actual = None
-                self.label_info_oficial.config(text="Oficial no encontrado", foreground="red")
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo buscar el oficial:\n{e}")
-
-    def ver_equipos_disponibles(self):
-        if not self.oficial_actual:
-            messagebox.showwarning("Advertencia", "Primero debe seleccionar un oficial.")
-            return
-
-        ventana = tk.Toplevel(self)
-        ventana.title("Equipos Disponibles")
-        ventana.geometry("600x400")
-
-        tree_equipos = ttk.Treeview(ventana, columns=("ID_Equipo", "Nombre"), show="headings", selectmode="extended")
-        tree_equipos.heading("ID_Equipo", text="Código")
-        tree_equipos.heading("Nombre", text="Nombre")
-        tree_equipos.pack(fill="both", expand=True)
-
-        df = pd.read_excel(self.ruta_equipos)
-        disponibles = df[df['Estado'] == "Disponible"]
-        for _, row in disponibles.iterrows():
-            tree_equipos.insert("", "end", values=(row["ID_Equipo"], row["Nombre"]))
-
-        def confirmar_prestamo():
-            seleccionados = tree_equipos.selection()
-            if not seleccionados:
-                messagebox.showinfo("Aviso", "No se seleccionaron equipos.")
+            if resultados.empty:
+                messagebox.showinfo("Información", "No se encontraron oficiales con ese criterio")
                 return
 
-            for item in seleccionados:
-                equipo_id = tree_equipos.item(item, "values")[0]
-                equipo_nombre = tree_equipos.item(item, "values")[1]
-                fecha_prestamo = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                self.historial.loc[len(self.historial)] = [
-                    self.oficial_actual[0],
-                    self.oficial_actual[1],
-                    equipo_id,
-                    fecha_prestamo,
-                    "",  # Fecha de devolución
-                    "Equipo Prestado"
-                ]
-                df.loc[df["ID_Equipo"] == equipo_id, "Estado"] = "Prestado"
+            oficial = resultados.iloc[0]
+            self.establecer_oficial_actual(oficial)
 
-            df.to_excel(self.ruta_equipos, index=False)
-            self.guardar_historial()
-            self.mostrar_historial()
-            ventana.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo buscar el oficial:\n{str(e)}")
 
-        ttk.Button(ventana, text="Confirmar Préstamo", command=confirmar_prestamo).pack(pady=10)
+    def establecer_oficial_actual(self, oficial):
+        self.oficial_actual = {
+            "ID": oficial['ID'],
+            "Nombre": oficial['Nombre'],
+            "Cargo": oficial['CARGO']
+        }
 
-    def mostrar_historial(self):
-        for row in self.tree.get_children():
-            self.tree.delete(row)
+        self.lbl_nombre.config(text=f"Nombre: {oficial['Nombre']}")
+        self.lbl_cargo.config(text=f"Cargo: {oficial['CARGO']}")
+        self.lbl_id.config(text=f"ID: {oficial['ID']}")
 
-        historial_filtrado = self.historial[self.historial["ID"] == self.oficial_actual[0]]
-        for _, row in historial_filtrado.iterrows():
-            self.tree.insert("", "end", values=tuple(row))
-
-    def abrir_gestor_devolucion(self, event):
-        item = self.tree.selection()[0]
-        values = self.tree.item(item, "values")
-
-        if values[5] == "Equipo Devuelto":
-            messagebox.showinfo("Info", "Este equipo ya fue devuelto.")
-            return
-
-        ventana = tk.Toplevel(self)
-        ventana.title("Devolución de Equipo")
-        ventana.geometry("300x200")
-
-        ttk.Label(ventana, text=f"Equipo: {values[2]}").pack(pady=10)
-        ttk.Label(ventana, text=f"Préstamo realizado: {values[3]}").pack()
-
-        def confirmar_devolucion():
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            index = self.historial[
-                (self.historial["ID"] == values[0]) &
-                (self.historial["Equipo"] == values[2]) &
-                (self.historial["Fecha Préstamo"] == values[3])
-            ].index
-
-            if not index.empty:
-                self.historial.loc[index, "Fecha Devolución"] = now
-                self.historial.loc[index, "Estado"] = "Equipo Devuelto"
-
-                df = pd.read_excel(self.ruta_equipos)
-                df.loc[df["ID_Equipo"] == values[2], "Estado"] = "Disponible"
-                df.to_excel(self.ruta_equipos, index=False)
-
-                self.guardar_historial()
-                self.mostrar_historial()
-                ventana.destroy()
-            else:
-                messagebox.showerror("Error", "No se encontró el préstamo para actualizar.")
-
-        ttk.Button(ventana, text="Confirmar Devolución", command=confirmar_devolucion).pack(pady=20)
+        self.cargar_historial()
 
     def cargar_historial(self):
-        if os.path.exists(self.ruta_historial):
-            return pd.read_excel(self.ruta_historial)
-        return pd.DataFrame(columns=["ID", "Nombre", "Equipo", "Fecha Préstamo", "Fecha Devolución", "Estado"])
+        self.tree_historial.delete(*self.tree_historial.get_children())
 
-    def guardar_historial(self):
-        self.historial.to_excel(self.ruta_historial, index=False)
+        if not self.oficial_actual:
+            return
 
+        try:
+            df = pd.read_excel(self.ruta_historial)
+            df['Hora_Prestamo'] = pd.to_datetime(df['Hora_Prestamo'], errors='coerce')
+            df_oficial = df[df['ID'] == self.oficial_actual['ID']]
+            if df_oficial.empty:
+                return
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.withdraw()
-    app = PrestamoDashboard()
-    app.mainloop()
+            grupos = df_oficial.groupby('Hora_Prestamo')
+            for hora, grupo in grupos:
+                total = len(grupo)
+                devueltos = grupo['Estado'].str.lower().eq("devuelto").sum()
+                estado = "Completado" if total == devueltos else ("Parcial" if devueltos > 0 else "Pendiente")
+
+                self.tree_historial.insert("", "end", values=(
+                    grupo.iloc[0]['ID'],
+                    grupo.iloc[0]['Nombre'],
+                    grupo.iloc[0]['Cargo'],
+                    hora.strftime("%Y-%m-%d %H:%M"),
+                    total,
+                    devueltos,
+                    estado
+                ))
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al cargar historial:\n{str(e)}")
+
+    def abrir_ventana_equipos(self):
+        if not self.oficial_actual:
+            messagebox.showwarning("Advertencia", "Primero seleccione un oficial")
+            return
+
+        SeleccionarEquipos(
+            parent=self,
+            oficial=self.oficial_actual,
+            ruta_historial=self.ruta_historial,
+            ruta_equipos=self.ruta_equipos,
+            callback=self.cargar_historial
+        )
+
+    def abrir_gestion_devolucion_grupal(self, event):
+        seleccion = self.tree_historial.selection()
+        if not seleccion:
+            return
+
+        item = self.tree_historial.item(seleccion[0])['values']
+        hora_str = item[3]
+        hora_prestamo = pd.to_datetime(hora_str)
+
+        GestionarGrupoDevolucion(
+            parent=self,
+            id_oficial=item[0],
+            hora_prestamo=hora_prestamo,
+            ruta_historial=self.ruta_historial,
+            ruta_equipos=self.ruta_equipos,
+            callback=self.cargar_historial
+        )
