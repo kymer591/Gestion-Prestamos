@@ -38,22 +38,22 @@ class LoginWindow(tk.Tk):
             print("❌ Fallo al cargar imagen")
 
     def configurar_interfaz(self):
-        self.logo_tk = cargar_logo()
-        if self.logo_tk:
-            print("✔ Imagen cargada, creando Label...")
-            self.lbl_logo = tk.Label(self, image=self.logo_tk, bg="#e6f2e6")
-            self.lbl_logo.image = self.logo_tk  # ✅ IMPORTANTE: mantener referencia
-            self.lbl_logo.place(relx=0.5, rely=0.1, anchor="center")
+        #self.logo_tk = cargar_logo()
+        #if self.logo_tk:
+        #    print("✔ Imagen cargada, creando Label...")
+        #    self.lbl_logo = tk.Label(self, image=self.logo_tk, bg="#e6f2e6")
+        #    self.lbl_logo.image = self.logo_tk  # ✅ IMPORTANTE: mantener referencia
+        #    self.lbl_logo.place(relx=0.5, rely=0.1, anchor="center")
         
-        else:
-            print("⚠️ Usando placeholder - Logo no cargado")
-            lbl_error = tk.Label(
-            self, 
-            text="LOGO NO DISPONIBLE",
-            fg="red",
-            bg="#e6f2e6"
-            )
-            lbl_error.place(relx=0.5, rely=0.1, anchor="center")
+        #else:
+        #    print("⚠️ Usando placeholder - Logo no cargado")
+        #    lbl_error = tk.Label(
+        #    self, 
+        #    text="LOGO NO DISPONIBLE",
+        #    fg="red",
+        #    bg="#e6f2e6"
+         #   )
+          #  lbl_error.place(relx=0.5, rely=0.1, anchor="center")
 
         # Marco de login
         marco = tk.Frame(self, bg="#d0e5d0", bd=2, relief="ridge")
